@@ -1,3 +1,4 @@
+//controller/authController.js
 import { getDB, sql } from '../config/database.js';
 import { generateToken } from '../config/jwt.js';
 import { sendResponse, sendError, getUserRoleFromEmail } from '../utils/helpers.js';
