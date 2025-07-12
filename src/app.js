@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import categoryRoutes from './routes/categories.js';
 import ticketRoutes from './routes/tickets.js';
+import adminRoutes from './routes/admin.js'; // New admin routes
 
 // Import utilities
 import { sendError } from './utils/helpers.js';
@@ -137,6 +138,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/admin', adminRoutes); // New admin routes
 
 // Handle 404 - Route not found
 app.use('*', (req, res) => {
