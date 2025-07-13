@@ -5,6 +5,7 @@ import {
   getAllTickets, 
   getTicketById,
   updateTicketStatus, 
+  addTicketRemark,  // Add this import
   approveTicket,
   getTicketHistory 
 } from '../controllers/ticketController.js';
@@ -12,7 +13,8 @@ import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 import { 
   validateCreateTicket, 
   validateUpdateTicketStatus, 
-  validateTicketId 
+  validateTicketId,
+  validateTicketRemark
 } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -55,6 +57,19 @@ router.put('/:id/status',
   authorizeRoles('manager', 'digital_team'), 
   validateUpdateTicketStatus, 
   updateTicketStatus
+);
+
+/**
+ * @route   PUT /api/tickets/:id/remark
+ * @desc    Add remark to ticket
+ * @access  Private (Manager, Digital Team)
+ */
+router.put('/:id/remark', 
+  authenticateToken, 
+  authorizeRoles('manager', 'digital_team'), 
+  validateTicketId,
+  validateTicketRemark,  // Add this
+  addTicketRemark
 );
 
 /**

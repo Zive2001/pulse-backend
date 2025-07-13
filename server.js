@@ -30,6 +30,7 @@ const startServer = async () => {
         console.log(`   GET    /api/tickets/all`);
         console.log(`   GET    /api/tickets/:id`);
         console.log(`   PUT    /api/tickets/:id/status`);
+        console.log(`   PUT    /api/tickets/:id/remark`);
         console.log(`   PUT    /api/tickets/:id/approve`);
         console.log(`   GET    /api/tickets/:id/history`);
         console.log('\n');
