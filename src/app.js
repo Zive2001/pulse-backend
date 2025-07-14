@@ -20,23 +20,29 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-// Rate limiting
+// More flexible rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300, // Increased from 100 to 300
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',
     timestamp: new Date().toISOString()
   },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Skip rate limiting for health checks
+  skip: (req) => req.path === '/api/health',
+  // Use a combination of IP and user agent for better identification
+  keyGenerator: (req) => {
+    return req.ip + ':' + (req.get('User-Agent') || '').substring(0, 50);
+  }
 });
 
-// Apply rate limiting to all requests
+// Apply rate limiting to all requests except health check
 app.use(limiter);
 
-// CORS configuration - Updated to handle Azure deployment better
+// Simplified CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -69,14 +75,13 @@ const corsOptions = {
     'Access-Control-Request-Method',
     'Access-Control-Request-Headers'
   ],
-  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
-  preflightContinue: false
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar']
 };
 
 app.use(cors(corsOptions));
 
-// Additional CORS headers for preflight requests
-app.use((req, res, next) => {
+// Explicit preflight handling - This is important for complex CORS scenarios
+app.options('*', (req, res) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
     'https://sg-prod-bdyapp-pulsefrontend-g9aqfserb6bea8eq.southeastasia-01.azurewebsites.net',
@@ -87,30 +92,26 @@ app.use((req, res, next) => {
   
   if (allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
   }
   
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
+  res.sendStatus(200);
 });
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware - Enable for both development and production temporarily for debugging
+// Request logging middleware - Enhanced for better debugging
 app.use((req, res, next) => {
   console.log(`🔍 ${new Date().toISOString()} - ${req.method} ${req.path}`);
   console.log(`📍 Origin: ${req.headers.origin || 'No origin'}`);
   console.log(`🔑 Auth: ${req.headers.authorization ? 'Present' : 'Not present'}`);
   console.log(`📦 Content-Type: ${req.headers['content-type'] || 'Not set'}`);
+  console.log(`🌐 IP: ${req.ip}`);
+  console.log(`📱 User-Agent: ${req.get('User-Agent') || 'Not set'}`);
   next();
 });
 
@@ -129,6 +130,10 @@ app.get('/api/health', (req, res) => {
         'http://localhost:5173',
         'http://localhost:5174'
       ]
+    },
+    rateLimit: {
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300
     }
   });
 });
@@ -147,6 +152,11 @@ app.use('*', (req, res) => {
 // Global error handling middleware
 app.use((error, req, res, next) => {
   console.error('❌ Unhandled error:', error);
+  
+  // Handle CORS errors specifically
+  if (error.message === 'Not allowed by CORS') {
+    return sendError(res, 403, 'CORS policy violation');
+  }
   
   // Handle specific error types
   if (error.name === 'ValidationError') {
