@@ -122,3 +122,17 @@ export const validateCategoryId = [
   
   handleValidationErrors
 ];
+
+// In your validation middleware
+export const validateTicketRemark = (req, res, next) => {
+  const { remark } = req.body;
+  
+  if (!remark || remark.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      message: 'Remark is required'
+    });
+  }
+  
+  next();
+};
