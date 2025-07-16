@@ -1,3 +1,4 @@
+//src/middleware/auth.js
 import { verifyToken } from '../config/jwt.js';
 import { sendError } from '../utils/helpers.js';
 

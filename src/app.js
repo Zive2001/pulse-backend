@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import categoryRoutes from './routes/categories.js';
 import ticketRoutes from './routes/tickets.js';
-import adminRoutes from './routes/admin.js'; // New admin routes
+import adminRoutes from './routes/admin.js';
 
 // Import utilities
 import { sendError } from './utils/helpers.js';
@@ -18,13 +18,25 @@ dotenv.config();
 
 const app = express();
 
-// Security middleware
-app.use(helmet());
+// Security middleware - Configure helmet to allow CORS
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
-// More flexible rate limiting
+// Define allowed origins
+const allowedOrigins = [
+  'https://sg-prod-bdyapp-pulsefrontend-g9aqfserb6bea8eq.southeastasia-01.azurewebsites.net',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174'
+];
+
+// Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300, // Increased from 100 to 300
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 500,
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',
@@ -32,35 +44,30 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Skip rate limiting for health checks
   skip: (req) => req.path === '/api/health',
-  // Use a combination of IP and user agent for better identification
   keyGenerator: (req) => {
     return req.ip + ':' + (req.get('User-Agent') || '').substring(0, 50);
   }
 });
 
-// Apply rate limiting to all requests except health check
 app.use(limiter);
 
-// Simplified CORS configuration
+// CORS configuration - Simplified and more reliable
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) {
+      console.log('✅ No origin - allowing request');
+      return callback(null, true);
+    }
     
-    const allowedOrigins = [
-      'https://sg-prod-bdyapp-pulsefrontend-g9aqfserb6bea8eq.southeastasia-01.azurewebsites.net',
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:5174'
-    ];
+    console.log('🔍 Checking origin:', origin);
     
-    // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
+      console.log('✅ Origin allowed:', origin);
       callback(null, true);
     } else {
-      console.log('❌ CORS blocked origin:', origin);
+      console.log('❌ Origin blocked:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -76,21 +83,18 @@ const corsOptions = {
     'Access-Control-Request-Method',
     'Access-Control-Request-Headers'
   ],
-  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar']
+  exposedHeaders: ['Content-Length', 'Authorization'],
+  preflightContinue: false
 };
 
+// Apply CORS middleware
 app.use(cors(corsOptions));
 
-// Explicit preflight handling - This is important for complex CORS scenarios
-app.options('*', (req, res) => {
+// Additional manual CORS headers for extra reliability
+app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = [
-    'https://sg-prod-bdyapp-pulsefrontend-g9aqfserb6bea8eq.southeastasia-01.azurewebsites.net',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:5174'
-  ];
   
+  // Set CORS headers if origin is allowed
   if (allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
@@ -98,21 +102,45 @@ app.options('*', (req, res) => {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
   }
   
-  res.sendStatus(200);
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    console.log('🚀 Preflight request for:', req.path);
+    console.log('🔍 Origin:', origin);
+    console.log('🔑 Headers sent:', {
+      'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+      'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+      'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers'),
+      'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials')
+    });
+    return res.status(200).end();
+  }
+  
+  next();
 });
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware - Enhanced for better debugging
+// Enhanced request logging
 app.use((req, res, next) => {
-  console.log(`🔍 ${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(`\n🔍 ${new Date().toISOString()} - ${req.method} ${req.path}`);
   console.log(`📍 Origin: ${req.headers.origin || 'No origin'}`);
   console.log(`🔑 Auth: ${req.headers.authorization ? 'Present' : 'Not present'}`);
   console.log(`📦 Content-Type: ${req.headers['content-type'] || 'Not set'}`);
   console.log(`🌐 IP: ${req.ip}`);
-  console.log(`📱 User-Agent: ${req.get('User-Agent') || 'Not set'}`);
+  console.log(`📱 User-Agent: ${(req.get('User-Agent') || 'Not set').substring(0, 100)}...`);
+  
+  // Log response headers for debugging
+  const originalSend = res.send;
+  res.send = function(data) {
+    console.log(`📤 Response Headers:`, {
+      'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+      'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials')
+    });
+    return originalSend.call(this, data);
+  };
+  
   next();
 });
 
@@ -125,16 +153,11 @@ app.get('/api/health', (req, res) => {
     version: '1.0.0',
     environment: process.env.NODE_ENV || 'development',
     cors: {
-      allowedOrigins: [
-        'https://sg-prod-bdyapp-pulsefrontend-g9aqfserb6bea8eq.southeastasia-01.azurewebsites.net',
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://localhost:5174'
-      ]
+      allowedOrigins: allowedOrigins
     },
     rateLimit: {
       windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 500
     }
   });
 });
@@ -143,7 +166,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/tickets', ticketRoutes);
-app.use('/api/admin', adminRoutes); // New admin routes
+app.use('/api/admin', adminRoutes);
 
 // Handle 404 - Route not found
 app.use('*', (req, res) => {
@@ -157,6 +180,7 @@ app.use((error, req, res, next) => {
   
   // Handle CORS errors specifically
   if (error.message === 'Not allowed by CORS') {
+    console.log('❌ CORS Error for origin:', req.headers.origin);
     return sendError(res, 403, 'CORS policy violation');
   }
   
