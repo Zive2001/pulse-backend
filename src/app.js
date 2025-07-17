@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.js';
 import categoryRoutes from './routes/categories.js';
 import ticketRoutes from './routes/tickets.js';
 import adminRoutes from './routes/admin.js';
+import dataRoutes from './routes/data.js';
 
 // Import utilities
 import { sendError } from './utils/helpers.js';
@@ -167,6 +168,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api', dataRoutes);
 
 // Handle 404 - Route not found
 app.use('*', (req, res) => {

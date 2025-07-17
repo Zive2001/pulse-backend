@@ -58,19 +58,59 @@ export const deleteTicket = async (req, res) => {
     }
 
     const pool = getDB();
-    const request = pool.request();
-    request.input('ticketId', sql.Int, id);
-    request.input('deletedBy', sql.Int, req.user.id);
-    request.input('reason', sql.NVarChar, reason || 'Deleted by admin');
-
-    // Execute the stored procedure
-    const result = await request.query(`
-      EXEC sp_DeleteTicket @TicketId = @ticketId, @DeletedBy = @deletedBy, @Reason = @reason
+    
+    // First, check if ticket exists
+    const checkRequest = pool.request();
+    checkRequest.input('ticketId', sql.Int, id);
+    
+    const ticketCheck = await checkRequest.query(`
+      SELECT id, ticket_number, title FROM Tickets WHERE id = @ticketId
     `);
 
-    if (result.recordset[0].Status === 'ERROR') {
-      return sendError(res, 500, result.recordset[0].Message);
+    if (ticketCheck.recordset.length === 0) {
+      return sendError(res, 404, 'Ticket not found');
     }
+
+    const ticket = ticketCheck.recordset[0];
+
+    // Add is_deleted column if it doesn't exist and perform soft delete
+    const deleteRequest = pool.request();
+    deleteRequest.input('ticketId', sql.Int, id);
+    deleteRequest.input('deletedBy', sql.Int, req.user.id);
+    deleteRequest.input('reason', sql.NVarChar, reason || 'Deleted by admin');
+
+    // Add is_deleted column if it doesn't exist
+    try {
+      await deleteRequest.query(`
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Tickets') AND name = 'is_deleted')
+        BEGIN
+          ALTER TABLE Tickets ADD is_deleted BIT DEFAULT 0
+        END
+      `);
+    } catch (alterError) {
+      console.log('Column might already exist:', alterError.message);
+    }
+
+    // Perform soft delete
+    const result = await deleteRequest.query(`
+      UPDATE Tickets 
+      SET is_deleted = 1, updated_at = GETDATE()
+      WHERE id = @ticketId
+    `);
+
+    if (result.rowsAffected[0] === 0) {
+      return sendError(res, 500, 'Failed to delete ticket');
+    }
+
+    // Log admin action
+    await logAdminAction(
+      req.user.id,
+      'delete_ticket',
+      'ticket',
+      id,
+      `Deleted ticket: ${ticket.ticket_number} - ${ticket.title}`,
+      JSON.stringify({ reason, ticket_number: ticket.ticket_number })
+    );
 
     console.log(`✅ Ticket ${id} deleted by admin ${req.user.email}`);
     return sendResponse(res, 200, true, 'Ticket deleted successfully');
@@ -78,6 +118,35 @@ export const deleteTicket = async (req, res) => {
   } catch (error) {
     console.error('❌ Delete ticket error:', error);
     return sendError(res, 500, 'Failed to delete ticket');
+  }
+};
+
+/**
+ * Get all support persons (for admin management)
+ */
+export const getAllSupportPersons = async (req, res) => {
+  try {
+    if (!checkAdminAccess(req.user)) {
+      return sendError(res, 403, 'Access denied. Admin privileges required.');
+    }
+
+    const pool = getDB();
+    const request = pool.request();
+    
+    const result = await request.query(`
+      SELECT 
+        sp.id, sp.name, sp.email, sp.is_active, sp.created_at,
+        sp.category_id, c.name as category_name
+      FROM SupportPersons sp
+      LEFT JOIN Categories c ON sp.category_id = c.id
+      ORDER BY c.name, sp.name
+    `);
+
+    return sendResponse(res, 200, true, 'Support persons retrieved successfully', result.recordset);
+
+  } catch (error) {
+    console.error('❌ Get all support persons error:', error);
+    return sendError(res, 500, 'Failed to retrieve support persons');
   }
 };
 
@@ -96,15 +165,19 @@ export const addSupportPerson = async (req, res) => {
       return sendError(res, 403, 'You do not have permission to manage support persons.');
     }
 
+    if (!name || !email || !category_id) {
+      return sendError(res, 400, 'Name, email, and category_id are required');
+    }
+
     const pool = getDB();
     const request = pool.request();
     request.input('name', sql.NVarChar, name);
     request.input('email', sql.NVarChar, email);
-    request.input('categoryId', sql.Int, category_id);
+    request.input('categoryId', sql.Int, parseInt(category_id));
 
     const result = await request.query(`
       INSERT INTO SupportPersons (name, email, category_id)
-      OUTPUT INSERTED.id, INSERTED.name, INSERTED.email
+      OUTPUT INSERTED.id, INSERTED.name, INSERTED.email, INSERTED.category_id
       VALUES (@name, @email, @categoryId)
     `);
 
@@ -125,7 +198,7 @@ export const addSupportPerson = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Add support person error:', error);
-    if (error.message.includes('duplicate') || error.message.includes('unique')) {
+    if (error.message.includes('duplicate') || error.message.includes('unique') || error.number === 2627) {
       return sendError(res, 409, 'Support person with this email already exists');
     }
     return sendError(res, 500, 'Failed to add support person');
@@ -150,11 +223,11 @@ export const updateSupportPerson = async (req, res) => {
 
     const pool = getDB();
     const request = pool.request();
-    request.input('id', sql.Int, id);
+    request.input('id', sql.Int, parseInt(id));
     request.input('name', sql.NVarChar, name);
     request.input('email', sql.NVarChar, email);
-    request.input('categoryId', sql.Int, category_id);
-    request.input('isActive', sql.Bit, is_active);
+    request.input('categoryId', sql.Int, parseInt(category_id));
+    request.input('isActive', sql.Bit, is_active !== undefined ? is_active : true);
 
     const result = await request.query(`
       UPDATE SupportPersons 
@@ -171,7 +244,7 @@ export const updateSupportPerson = async (req, res) => {
       req.user.id,
       'update_support_person',
       'support_person',
-      id,
+      parseInt(id),
       `Updated support person: ${name}`,
       JSON.stringify({ name, email, category_id, is_active })
     );
@@ -202,7 +275,7 @@ export const deleteSupportPerson = async (req, res) => {
 
     const pool = getDB();
     const request = pool.request();
-    request.input('id', sql.Int, id);
+    request.input('id', sql.Int, parseInt(id));
 
     // First get the support person details for logging
     const selectResult = await request.query(`
@@ -225,7 +298,7 @@ export const deleteSupportPerson = async (req, res) => {
       req.user.id,
       'delete_support_person',
       'support_person',
-      id,
+      parseInt(id),
       `Deleted support person: ${supportPerson.name} (${supportPerson.email})`,
       JSON.stringify(supportPerson)
     );
@@ -254,9 +327,13 @@ export const addManager = async (req, res) => {
       return sendError(res, 403, 'You do not have permission to manage managers.');
     }
 
+    if (!email) {
+      return sendError(res, 400, 'Email is required');
+    }
+
     const pool = getDB();
     const request = pool.request();
-    request.input('name', sql.NVarChar, name);
+    request.input('name', sql.NVarChar, name || email.split('@')[0]);
     request.input('email', sql.NVarChar, email);
     request.input('department', sql.NVarChar, department || null);
 
@@ -274,16 +351,16 @@ export const addManager = async (req, res) => {
       'add_manager',
       'user',
       newManager.id,
-      `Added manager: ${name} (${email})`,
-      JSON.stringify({ name, email, department, role: 'manager' })
+      `Added manager: ${newManager.name} (${email})`,
+      JSON.stringify({ name: newManager.name, email, department, role: 'manager' })
     );
 
-    console.log(`✅ Manager added: ${name} by admin ${req.user.email}`);
+    console.log(`✅ Manager added: ${newManager.name} by admin ${req.user.email}`);
     return sendResponse(res, 201, true, 'Manager added successfully', newManager);
 
   } catch (error) {
     console.error('❌ Add manager error:', error);
-    if (error.message.includes('duplicate') || error.message.includes('unique')) {
+    if (error.message.includes('duplicate') || error.message.includes('unique') || error.number === 2627) {
       return sendError(res, 409, 'User with this email already exists');
     }
     return sendError(res, 500, 'Failed to add manager');
@@ -308,7 +385,7 @@ export const updateUserRole = async (req, res) => {
 
     const pool = getDB();
     const request = pool.request();
-    request.input('id', sql.Int, id);
+    request.input('id', sql.Int, parseInt(id));
     request.input('role', sql.NVarChar, role);
     request.input('department', sql.NVarChar, department || null);
 
@@ -327,7 +404,7 @@ export const updateUserRole = async (req, res) => {
       req.user.id,
       'update_user_role',
       'user',
-      id,
+      parseInt(id),
       `Updated user role to: ${role}`,
       JSON.stringify({ role, department })
     );
@@ -338,6 +415,32 @@ export const updateUserRole = async (req, res) => {
   } catch (error) {
     console.error('❌ Update user role error:', error);
     return sendError(res, 500, 'Failed to update user role');
+  }
+};
+
+/**
+ * Get all categories (for admin management)
+ */
+export const getAllCategories = async (req, res) => {
+  try {
+    if (!checkAdminAccess(req.user)) {
+      return sendError(res, 403, 'Access denied. Admin privileges required.');
+    }
+
+    const pool = getDB();
+    const request = pool.request();
+    
+    const result = await request.query(`
+      SELECT id, name, created_at
+      FROM Categories 
+      ORDER BY name
+    `);
+
+    return sendResponse(res, 200, true, 'Categories retrieved successfully', result.recordset);
+
+  } catch (error) {
+    console.error('❌ Get all categories error:', error);
+    return sendError(res, 500, 'Failed to retrieve categories');
   }
 };
 
@@ -354,6 +457,10 @@ export const addCategory = async (req, res) => {
     
     if (!hasPermission(req.user, 'manage_categories')) {
       return sendError(res, 403, 'You do not have permission to manage categories.');
+    }
+
+    if (!name) {
+      return sendError(res, 400, 'Category name is required');
     }
 
     const pool = getDB();
@@ -405,7 +512,7 @@ export const updateCategory = async (req, res) => {
 
     const pool = getDB();
     const request = pool.request();
-    request.input('id', sql.Int, id);
+    request.input('id', sql.Int, parseInt(id));
     request.input('name', sql.NVarChar, name);
 
     const result = await request.query(`
@@ -423,7 +530,7 @@ export const updateCategory = async (req, res) => {
       req.user.id,
       'update_category',
       'category',
-      id,
+      parseInt(id),
       `Updated category: ${name}`,
       JSON.stringify({ name })
     );
@@ -454,11 +561,11 @@ export const deleteCategory = async (req, res) => {
 
     const pool = getDB();
     const request = pool.request();
-    request.input('id', sql.Int, id);
+    request.input('id', sql.Int, parseInt(id));
 
     // First check if category has any tickets
     const ticketCheckResult = await request.query(`
-      SELECT COUNT(*) as count FROM Tickets WHERE category_id = @id AND is_deleted = 0
+      SELECT COUNT(*) as count FROM Tickets WHERE category_id = @id AND ISNULL(is_deleted, 0) = 0
     `);
 
     if (ticketCheckResult.recordset[0].count > 0) {
@@ -487,7 +594,7 @@ export const deleteCategory = async (req, res) => {
       req.user.id,
       'delete_category',
       'category',
-      id,
+      parseInt(id),
       `Deleted category: ${category.name}`,
       JSON.stringify(category)
     );
@@ -498,6 +605,35 @@ export const deleteCategory = async (req, res) => {
   } catch (error) {
     console.error('❌ Delete category error:', error);
     return sendError(res, 500, 'Failed to delete category');
+  }
+};
+
+/**
+ * Get all subcategories (for admin management)
+ */
+export const getAllSubcategories = async (req, res) => {
+  try {
+    if (!checkAdminAccess(req.user)) {
+      return sendError(res, 403, 'Access denied. Admin privileges required.');
+    }
+
+    const pool = getDB();
+    const request = pool.request();
+    
+    const result = await request.query(`
+      SELECT 
+        sc.id, sc.name, sc.category_id, sc.requires_text_input, sc.created_at,
+        c.name as category_name
+      FROM Subcategories sc
+      LEFT JOIN Categories c ON sc.category_id = c.id
+      ORDER BY c.name, sc.name
+    `);
+
+    return sendResponse(res, 200, true, 'Subcategories retrieved successfully', result.recordset);
+
+  } catch (error) {
+    console.error('❌ Get all subcategories error:', error);
+    return sendError(res, 500, 'Failed to retrieve subcategories');
   }
 };
 
@@ -516,10 +652,14 @@ export const addSubcategory = async (req, res) => {
       return sendError(res, 403, 'You do not have permission to manage categories.');
     }
 
+    if (!name || !category_id) {
+      return sendError(res, 400, 'Name and category_id are required');
+    }
+
     const pool = getDB();
     const request = pool.request();
     request.input('name', sql.NVarChar, name);
-    request.input('categoryId', sql.Int, category_id);
+    request.input('categoryId', sql.Int, parseInt(category_id));
     request.input('requiresTextInput', sql.Bit, requires_text_input || 0);
 
     const result = await request.query(`
@@ -546,6 +686,110 @@ export const addSubcategory = async (req, res) => {
   } catch (error) {
     console.error('❌ Add subcategory error:', error);
     return sendError(res, 500, 'Failed to add subcategory');
+  }
+};
+
+/**
+ * Update subcategory
+ */
+export const updateSubcategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, category_id, requires_text_input } = req.body;
+    
+    if (!checkAdminAccess(req.user)) {
+      return sendError(res, 403, 'Access denied. Admin privileges required.');
+    }
+    
+    if (!hasPermission(req.user, 'manage_categories')) {
+      return sendError(res, 403, 'You do not have permission to manage categories.');
+    }
+
+    const pool = getDB();
+    const request = pool.request();
+    request.input('id', sql.Int, parseInt(id));
+    request.input('name', sql.NVarChar, name);
+    request.input('categoryId', sql.Int, parseInt(category_id));
+    request.input('requiresTextInput', sql.Bit, requires_text_input || 0);
+
+    const result = await request.query(`
+      UPDATE Subcategories 
+      SET name = @name, category_id = @categoryId, requires_text_input = @requiresTextInput
+      WHERE id = @id
+    `);
+
+    if (result.rowsAffected[0] === 0) {
+      return sendError(res, 404, 'Subcategory not found');
+    }
+
+    // Log admin action
+    await logAdminAction(
+      req.user.id,
+      'update_subcategory',
+      'subcategory',
+      parseInt(id),
+      `Updated subcategory: ${name}`,
+      JSON.stringify({ name, category_id, requires_text_input })
+    );
+
+    console.log(`✅ Subcategory updated: ${name} by admin ${req.user.email}`);
+    return sendResponse(res, 200, true, 'Subcategory updated successfully');
+
+  } catch (error) {
+    console.error('❌ Update subcategory error:', error);
+    return sendError(res, 500, 'Failed to update subcategory');
+  }
+};
+
+/**
+ * Delete subcategory
+ */
+export const deleteSubcategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!checkAdminAccess(req.user)) {
+      return sendError(res, 403, 'Access denied. Admin privileges required.');
+    }
+    
+    if (!hasPermission(req.user, 'manage_categories')) {
+      return sendError(res, 403, 'You do not have permission to manage categories.');
+    }
+
+    const pool = getDB();
+    const request = pool.request();
+    request.input('id', sql.Int, parseInt(id));
+
+    // Get subcategory details for logging
+    const selectResult = await request.query(`
+      SELECT name FROM Subcategories WHERE id = @id
+    `);
+
+    if (selectResult.recordset.length === 0) {
+      return sendError(res, 404, 'Subcategory not found');
+    }
+
+    const subcategory = selectResult.recordset[0];
+
+    // Delete subcategory
+    const deleteResult = await request.query(`DELETE FROM Subcategories WHERE id = @id`);
+
+    // Log admin action
+    await logAdminAction(
+      req.user.id,
+      'delete_subcategory',
+      'subcategory',
+      parseInt(id),
+      `Deleted subcategory: ${subcategory.name}`,
+      JSON.stringify(subcategory)
+    );
+
+    console.log(`✅ Subcategory deleted: ${subcategory.name} by admin ${req.user.email}`);
+    return sendResponse(res, 200, true, 'Subcategory deleted successfully');
+
+  } catch (error) {
+    console.error('❌ Delete subcategory error:', error);
+    return sendError(res, 500, 'Failed to delete subcategory');
   }
 };
 
@@ -603,7 +847,54 @@ export const getAdminLogs = async (req, res) => {
     console.error('❌ Get admin logs error:', error);
     return sendError(res, 500, 'Failed to retrieve admin logs');
   }
+};
 
-
-  
+/**
+ * Debug endpoint to check admin access
+ */
+export const debugAdminAccess = async (req, res) => {
+  try {
+    console.log('🔍 DEBUG: User object from token:', JSON.stringify(req.user, null, 2));
+    
+    const user = req.user;
+    const isAdmin = user.role === 'admin' || user.is_admin === true;
+    const hasPermissions = user.permissions ? user.permissions.split(',') : [];
+    
+    const debugInfo = {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        is_admin: user.is_admin,
+        permissions: user.permissions
+      },
+      checks: {
+        isAdmin: isAdmin,
+        hasPermissions: hasPermissions,
+        canDeleteTickets: hasPermissions.includes('delete_tickets'),
+        canManageCategories: hasPermissions.includes('manage_categories'),
+        canManageSupportPersons: hasPermissions.includes('manage_support_persons'),
+        canManageManagers: hasPermissions.includes('manage_managers')
+      },
+      authHeader: req.headers.authorization ? 'Present' : 'Missing',
+      tokenInfo: req.headers.authorization ? 'Token exists' : 'No token'
+    };
+    
+    console.log('🔍 DEBUG: Admin check results:', JSON.stringify(debugInfo, null, 2));
+    
+    return res.json({
+      success: true,
+      message: 'Debug info for admin access',
+      data: debugInfo
+    });
+    
+  } catch (error) {
+    console.error('❌ Debug admin access error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Debug failed',
+      error: error.message
+    });
+  }
 };
