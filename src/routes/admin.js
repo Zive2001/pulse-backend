@@ -3,17 +3,23 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import {
   deleteTicket,
+  getAllSupportPersons,
   addSupportPerson,
   updateSupportPerson,
   deleteSupportPerson,
   addManager,
   updateUserRole,
+  getAllCategories,
   addCategory,
   updateCategory,
   deleteCategory,
+  getAllSubcategories,
   addSubcategory,
+  updateSubcategory,
+  deleteSubcategory,
   getAllUsers,
-  getAdminLogs
+  getAdminLogs,
+    debugAdminAccess
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -25,24 +31,31 @@ router.use(authenticateToken);
 router.delete('/tickets/:id', deleteTicket);
 
 // Support person management
+router.get('/support-persons', getAllSupportPersons);
 router.post('/support-persons', addSupportPerson);
 router.put('/support-persons/:id', updateSupportPerson);
 router.delete('/support-persons/:id', deleteSupportPerson);
 
 // User/Manager management
+router.get('/users', getAllUsers);
 router.post('/managers', addManager);
 router.put('/users/:id/role', updateUserRole);
-router.get('/users', getAllUsers);
 
 // Category management
+router.get('/categories', getAllCategories);
 router.post('/categories', addCategory);
 router.put('/categories/:id', updateCategory);
 router.delete('/categories/:id', deleteCategory);
 
 // Subcategory management
+router.get('/subcategories', getAllSubcategories);
 router.post('/subcategories', addSubcategory);
+router.put('/subcategories/:id', updateSubcategory);
+router.delete('/subcategories/:id', deleteSubcategory);
 
 // Admin logs
 router.get('/logs', getAdminLogs);
+
+router.get('/debug', debugAdminAccess);
 
 export default router;
