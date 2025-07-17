@@ -1,29 +1,20 @@
+// routes/auth.js
 import express from 'express';
-import { login, getProfile, logout } from '../controllers/authController.js';
+import { azureLogin, login, getProfile, logout } from '../controllers/authController.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { validateLogin } from '../middleware/validation.js';
 
 const router = express.Router();
 
-/**
- * @route   POST /api/auth/login
- * @desc    Login user and return JWT token
- * @access  Public
- */
-router.post('/login', validateLogin, login);
+// Azure AD login route
+router.post('/azure-login', azureLogin);
 
-/**
- * @route   GET /api/auth/profile
- * @desc    Get current user profile
- * @access  Private
- */
+// Legacy login route (keep for backward compatibility)
+router.post('/login', login);
+
+// Get current user profile
 router.get('/profile', authenticateToken, getProfile);
 
-/**
- * @route   POST /api/auth/logout
- * @desc    Logout user (client-side token removal)
- * @access  Private
- */
-router.post('/logout', authenticateToken, logout);
+// Logout route
+router.post('/logout', logout);
 
 export default router;
