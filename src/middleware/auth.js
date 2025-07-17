@@ -1,69 +1,74 @@
-//src/middleware/auth.js
-import { verifyToken } from '../config/jwt.js';
-import { sendError } from '../utils/helpers.js';
+// middleware/auth.js - Improved version
+import jwt from 'jsonwebtoken';
+import { getDB, sql } from '../config/database.js';
 
-/**
- * Authentication middleware
- * Verifies JWT token and sets req.user
- */
-export const authenticateToken = (req, res, next) => {
+export const authenticateToken = async (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
-      return sendError(res, 401, 'Access token required');
+      return res.status(401).json({
+        success: false,
+        message: 'Access token required'
+      });
     }
 
-    const decoded = verifyToken(token);
-    req.user = decoded;
+    // Verify the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Fetch fresh user data from database to ensure we have latest admin status
+    const pool = getDB();
+    const request = pool.request();
+    request.input('userId', sql.Int, decoded.id);
+    
+    const result = await request.query(`
+      SELECT id, name, email, role, department, is_admin, permissions, created_at, updated_at
+      FROM Users 
+      WHERE id = @userId
+    `);
+
+    if (result.recordset.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = result.recordset[0];
+    
+    // Log user data for debugging
+    console.log('🔍 Authenticated user:', {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      is_admin: user.is_admin,
+      permissions: user.permissions
+    });
+
+    req.user = user;
     next();
+    
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      return sendError(res, 401, 'Token expired');
-    } else if (error.name === 'JsonWebTokenError') {
-      return sendError(res, 403, 'Invalid token');
-    } else {
-      return sendError(res, 403, 'Token verification failed');
-    }
-  }
-};
-
-/**
- * Role-based authorization middleware
- * Checks if user has required role(s)
- */
-export const authorizeRoles = (...allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user) {
-      return sendError(res, 401, 'User not authenticated');
-    }
-
-    if (!allowedRoles.includes(req.user.role)) {
-      return sendError(res, 403, 'Insufficient permissions');
-    }
-
-    next();
-  };
-};
-
-/**
- * Optional authentication middleware
- * Sets req.user if token exists, but doesn't require it
- */
-export const optionalAuth = (req, res, next) => {
-  try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (token) {
-      const decoded = verifyToken(token);
-      req.user = decoded;
+    console.error('❌ Authentication error:', error);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
     }
     
-    next();
-  } catch (error) {
-    // If token is invalid, continue without setting user
-    next();
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Token expired'
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Authentication failed'
+    });
   }
 };
