@@ -1,6 +1,7 @@
-//ticketController.js
+// ticketController.js - Updated with email notifications
 import { getDB, sql } from '../config/database.js';
 import { sendResponse, sendError, generateTicketNumber } from '../utils/helpers.js';
+import { notifyTicketCreated, notifyTicketUpdated, notifyManagerApproval } from './emailController.js';
 
 /**
  * Create a new ticket
@@ -66,6 +67,36 @@ export const createTicket = async (req, res) => {
     
     console.log(`✅ New ticket created: ${ticketNumber} by ${req.user.email}`);
     
+    // Send email notifications
+    try {
+      const ticketData = {
+        id: newTicket.id,
+        ticket_number: newTicket.ticket_number,
+        title,
+        description,
+        type,
+        urgency,
+        status: newTicket.status
+      };
+
+      const userData = {
+        name: req.user.name,
+        email: req.user.email
+      };
+
+      // If requires approval, notify manager; otherwise notify digital team
+      if (requiresApproval) {
+        await notifyManagerApproval(ticketData, userData);
+        console.log('✅ Manager approval notification sent');
+      } else {
+        await notifyTicketCreated(ticketData, userData);
+        console.log('✅ Ticket creation notification sent');
+      }
+    } catch (emailError) {
+      console.error('❌ Email notification failed:', emailError);
+      // Don't fail the ticket creation if email fails
+    }
+    
     return sendResponse(res, 201, true, 'Ticket created successfully', {
       id: newTicket.id,
       ticket_number: newTicket.ticket_number,
@@ -80,8 +111,93 @@ export const createTicket = async (req, res) => {
 };
 
 /**
- * Get tickets for the logged-in user
+ * Add remark to ticket (for digital team members)
  */
+export const addTicketRemark = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { remark, status } = req.body;
+    
+    const pool = getDB();
+    
+    // Get current ticket data first
+    const getTicketRequest = pool.request();
+    getTicketRequest.input('ticketId', sql.Int, id);
+    
+    const ticketResult = await getTicketRequest.query(`
+      SELECT 
+        t.ticket_number, t.title, t.description,
+        u.email as created_by_email, u.name as created_by_name
+      FROM Tickets t
+      LEFT JOIN Users u ON t.created_by = u.id
+      WHERE t.id = @ticketId
+    `);
+    
+    if (ticketResult.recordset.length === 0) {
+      return sendError(res, 404, 'Ticket not found');
+    }
+    
+    const ticketData = ticketResult.recordset[0];
+    
+    const request = pool.request();
+    request.input('ticketId', sql.Int, id);
+    request.input('remark', sql.NText, remark);
+    request.input('status', sql.NVarChar, status);
+    
+    // Update ticket with remark and status
+    let updateQuery = `
+      UPDATE Tickets 
+      SET remark = @remark, status = @status, updated_at = GETDATE()
+    `;
+    
+    if (status === 'Resolved') {
+      updateQuery += `, resolved_at = GETDATE()`;
+    }
+    
+    updateQuery += ` WHERE id = @ticketId`;
+    
+    const result = await request.query(updateQuery);
+    
+    if (result.rowsAffected[0] === 0) {
+      return sendError(res, 404, 'Ticket not found');
+    }
+    
+    // Log the remark addition in history
+    await logTicketHistory(id, req.user.id, 'remark', null, remark, 'Remark added');
+    await logTicketHistory(id, req.user.id, 'status', null, status, 'Status updated with remark');
+    
+    console.log(`✅ Remark added to ticket ${id} by ${req.user.email}`);
+    
+    // Send email notification to ticket creator
+    try {
+      const notificationData = {
+        id: id,
+        ticket_number: ticketData.ticket_number,
+        title: ticketData.title,
+        created_by_email: ticketData.created_by_email
+      };
+
+      const updatedByUser = {
+        name: req.user.name,
+        email: req.user.email
+      };
+
+      await notifyTicketUpdated(notificationData, remark, status, updatedByUser);
+      console.log('✅ Ticket update notification sent');
+    } catch (emailError) {
+      console.error('❌ Email notification failed:', emailError);
+      // Don't fail the remark addition if email fails
+    }
+    
+    return sendResponse(res, 200, true, 'Remark added successfully');
+    
+  } catch (error) {
+    console.error('❌ Add ticket remark error:', error);
+    return sendError(res, 500, 'Failed to add remark');
+  }
+};
+
+// Keep all other existing functions unchanged...
 export const getUserTickets = async (req, res) => {
   try {
     const pool = getDB();
@@ -116,9 +232,6 @@ export const getUserTickets = async (req, res) => {
   }
 };
 
-/**
- * Get all tickets (for managers and digital team)
- */
 export const getAllTickets = async (req, res) => {
   try {
     const pool = getDB();
@@ -143,7 +256,6 @@ export const getAllTickets = async (req, res) => {
       LEFT JOIN SupportPersons sp ON t.mentioned_support_person = sp.id
     `;
     
-    // If digital team member, show only relevant tickets
     if (req.user.role === 'digital_team') {
       request.input('userId', sql.Int, req.user.id);
       query += ` WHERE (t.assigned_to = @userId OR t.assigned_to IS NULL)`;
@@ -160,9 +272,6 @@ export const getAllTickets = async (req, res) => {
   }
 };
 
-/**
- * Get single ticket by ID
- */
 export const getTicketById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -198,7 +307,6 @@ export const getTicketById = async (req, res) => {
     
     const ticket = result.recordset[0];
     
-    // Check if user has permission to view this ticket
     const canView = req.user.role === 'manager' || 
                   req.user.role === 'digital_team' || 
                   ticket.created_by_email === req.user.email;
@@ -215,9 +323,6 @@ export const getTicketById = async (req, res) => {
   }
 };
 
-/**
- * Update ticket status
- */
 export const updateTicketStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -229,7 +334,6 @@ export const updateTicketStatus = async (req, res) => {
     request.input('status', sql.NVarChar, status);
     request.input('assignedTo', sql.Int, assigned_to || null);
     
-    // Build update query
     let updateQuery = `
       UPDATE Tickets 
       SET status = @status, updated_at = GETDATE()
@@ -251,7 +355,6 @@ export const updateTicketStatus = async (req, res) => {
       return sendError(res, 404, 'Ticket not found');
     }
     
-    // Log the change in history
     await logTicketHistory(id, req.user.id, 'status', null, status, 'Status updated');
     
     if (assigned_to) {
@@ -268,57 +371,6 @@ export const updateTicketStatus = async (req, res) => {
   }
 };
 
-/**
- * Add remark to ticket (for digital team members)
- */
-export const addTicketRemark = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { remark, status } = req.body;
-    
-    const pool = getDB();
-    const request = pool.request();
-    request.input('ticketId', sql.Int, id);
-    request.input('remark', sql.NText, remark);
-    request.input('status', sql.NVarChar, status);
-    
-    // Update ticket with remark and status
-    let updateQuery = `
-      UPDATE Tickets 
-      SET remark = @remark, status = @status, updated_at = GETDATE()
-    `;
-    
-    if (status === 'Resolved') {
-      updateQuery += `, resolved_at = GETDATE()`;
-    }
-    
-    updateQuery += ` WHERE id = @ticketId`;
-    
-    const result = await request.query(updateQuery);
-    
-    if (result.rowsAffected[0] === 0) {
-      return sendError(res, 404, 'Ticket not found');
-    }
-    
-    // Log the remark addition in history
-    await logTicketHistory(id, req.user.id, 'remark', null, remark, 'Remark added');
-    
-    // Log status change if different
-    await logTicketHistory(id, req.user.id, 'status', null, status, 'Status updated with remark');
-    
-    console.log(`✅ Remark added to ticket ${id} by ${req.user.email}`);
-    
-    return sendResponse(res, 200, true, 'Remark added successfully');
-    
-  } catch (error) {
-    console.error('❌ Add ticket remark error:', error);
-    return sendError(res, 500, 'Failed to add remark');
-  }
-};
-
-/**
- * Approve ticket (for managers)
- */
 export const approveTicket = async (req, res) => {
   try {
     const { id } = req.params;
@@ -338,7 +390,6 @@ export const approveTicket = async (req, res) => {
       return sendError(res, 404, 'Ticket not found or not pending approval');
     }
     
-    // Log the approval in history
     await logTicketHistory(id, req.user.id, 'status', 'Pending Approval', 'Open', 'Ticket approved');
     
     console.log(`✅ Ticket ${id} approved by ${req.user.email}`);
@@ -351,9 +402,6 @@ export const approveTicket = async (req, res) => {
   }
 };
 
-/**
- * Get ticket history
- */
 export const getTicketHistory = async (req, res) => {
   try {
     const { id } = req.params;
@@ -380,9 +428,6 @@ export const getTicketHistory = async (req, res) => {
   }
 };
 
-/**
- * Helper function to log ticket history
- */
 const logTicketHistory = async (ticketId, changedBy, fieldName, oldValue, newValue, changeReason) => {
   try {
     const pool = getDB();
