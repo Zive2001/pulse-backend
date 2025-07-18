@@ -1,4 +1,4 @@
-// emailController.js
+// emailController.js - Enhanced with better logging
 import soap from 'soap';
 import { sendResponse, sendError } from '../utils/helpers.js';
 
@@ -11,7 +11,12 @@ const DIGITAL_TEAM_EMAIL = 'BodylineDigitalExcellence@masholdings.com';
  */
 const sendEmail = async (to, subject, body) => {
   try {
+    console.log('🔄 Attempting to send email...');
+    console.log('📧 Email details:', { to, subject: subject.substring(0, 50) + '...' });
+    console.log('🔗 SOAP Service URL:', EMAIL_SERVICE_URL);
+    
     const client = await soap.createClientAsync(EMAIL_SERVICE_URL);
+    console.log('✅ SOAP client created successfully');
     
     const emailData = {
       to: to,
@@ -19,11 +24,19 @@ const sendEmail = async (to, subject, body) => {
       body: body
     };
 
+    console.log('📤 Sending email with data:', { to: emailData.to, subject: emailData.subject });
+    
     const result = await client.SendMailHTMLAsync(emailData);
-    console.log('✅ Email sent successfully:', { to, subject });
+    console.log('✅ Email sent successfully:', { to, subject, result });
     return result;
   } catch (error) {
     console.error('❌ Email sending failed:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      response: error.response?.data
+    });
     throw error;
   }
 };
@@ -33,6 +46,17 @@ const sendEmail = async (to, subject, body) => {
  */
 export const notifyTicketCreated = async (ticketData, userData) => {
   try {
+    console.log('🎫 Starting ticket creation notification...');
+    console.log('📋 Ticket data:', { 
+      id: ticketData.id, 
+      ticket_number: ticketData.ticket_number,
+      title: ticketData.title 
+    });
+    console.log('👤 User data:', { 
+      name: userData.name, 
+      email: userData.email 
+    });
+    
     const subject = `New Support Ticket Created - ${ticketData.ticket_number}`;
     
     const body = `
@@ -75,10 +99,18 @@ export const notifyTicketCreated = async (ticketData, userData) => {
       </div>
     `;
 
+    console.log('📧 Sending to digital team email:', DIGITAL_TEAM_EMAIL);
     await sendEmail(DIGITAL_TEAM_EMAIL, subject, body);
+    console.log('✅ Ticket creation notification sent successfully');
     return { success: true };
   } catch (error) {
     console.error('❌ Failed to send ticket creation notification:', error);
+    console.error('❌ Full error details:', {
+      message: error.message,
+      stack: error.stack,
+      ticketData,
+      userData
+    });
     throw error;
   }
 };
@@ -88,6 +120,14 @@ export const notifyTicketCreated = async (ticketData, userData) => {
  */
 export const notifyTicketUpdated = async (ticketData, remark, newStatus, updatedByUser) => {
   try {
+    console.log('📝 Starting ticket update notification...');
+    console.log('📋 Ticket data:', { 
+      id: ticketData.id, 
+      ticket_number: ticketData.ticket_number,
+      title: ticketData.title,
+      created_by_email: ticketData.created_by_email
+    });
+    
     const subject = `Ticket Update - ${ticketData.ticket_number}`;
     
     const body = `
@@ -126,10 +166,20 @@ export const notifyTicketUpdated = async (ticketData, remark, newStatus, updated
       </div>
     `;
 
+    console.log('📧 Sending to ticket creator:', ticketData.created_by_email);
     await sendEmail(ticketData.created_by_email, subject, body);
+    console.log('✅ Ticket update notification sent successfully');
     return { success: true };
   } catch (error) {
     console.error('❌ Failed to send ticket update notification:', error);
+    console.error('❌ Full error details:', {
+      message: error.message,
+      stack: error.stack,
+      ticketData,
+      remark,
+      newStatus,
+      updatedByUser
+    });
     throw error;
   }
 };
@@ -139,6 +189,13 @@ export const notifyTicketUpdated = async (ticketData, remark, newStatus, updated
  */
 export const notifyManagerApproval = async (ticketData, createdByUser) => {
   try {
+    console.log('⚠️ Starting manager approval notification...');
+    console.log('📋 Ticket data:', { 
+      id: ticketData.id, 
+      ticket_number: ticketData.ticket_number,
+      title: ticketData.title 
+    });
+    
     const subject = `Manager Approval Required - ${ticketData.ticket_number}`;
     
     const body = `
@@ -187,12 +244,18 @@ export const notifyManagerApproval = async (ticketData, createdByUser) => {
       </div>
     `;
 
-    // You might want to get manager emails from database
-    // For now, sending to digital team email - update this with actual manager emails
+    console.log('📧 Sending to digital team email (manager approval):', DIGITAL_TEAM_EMAIL);
     await sendEmail(DIGITAL_TEAM_EMAIL, subject, body);
+    console.log('✅ Manager approval notification sent successfully');
     return { success: true };
   } catch (error) {
     console.error('❌ Failed to send manager approval notification:', error);
+    console.error('❌ Full error details:', {
+      message: error.message,
+      stack: error.stack,
+      ticketData,
+      createdByUser
+    });
     throw error;
   }
 };
@@ -202,13 +265,18 @@ export const notifyManagerApproval = async (ticketData, createdByUser) => {
  */
 export const testEmail = async (req, res) => {
   try {
+    console.log('🧪 Test email endpoint called');
     const { to, subject, message } = req.body;
     
+    console.log('📧 Test email parameters:', { to, subject });
+    
     if (!to || !subject || !message) {
+      console.log('❌ Missing required fields');
       return sendError(res, 400, 'Missing required fields: to, subject, message');
     }
 
     await sendEmail(to, subject, message);
+    console.log('✅ Test email sent successfully');
     return sendResponse(res, 200, true, 'Test email sent successfully');
   } catch (error) {
     console.error('❌ Test email failed:', error);
