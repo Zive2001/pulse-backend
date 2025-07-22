@@ -1,4 +1,4 @@
-// emailController.js - Enhanced for Azure App Service with Environment Variables
+// emailController.js - Enhanced with CC functionality using multiple emails
 import soap from 'soap';
 import { sendResponse, sendError } from '../utils/helpers.js';
 import http from 'http';
@@ -9,50 +9,14 @@ const EMAIL_SERVICE_URL = process.env.EMAIL_SERVICE_URL || 'https://sg-prod-bdya
 const SYSTEM_URL = process.env.CORS_ORIGIN?.split(',')[0] || 'https://sg-prod-bdyapp-pulsefrontend-g9aqfserb6bea8eq.southeastasia-01.azurewebsites.net/';
 const DIGITAL_TEAM_EMAIL = process.env.DIGITAL_TEAM_EMAIL || 'BodylineDigitalExcellence@masholdings.com';
 
+// TODO: Replace with API endpoint to get manager email dynamically
+const MANAGER_EMAIL = 'gayankar@masholdings.com';
+
 // Timeout and retry configuration from environment
 const EMAIL_TIMEOUT = parseInt(process.env.EMAIL_TIMEOUT) || 90000;
 const EMAIL_CONNECTION_TIMEOUT = parseInt(process.env.EMAIL_CONNECTION_TIMEOUT) || 30000;
 const EMAIL_MAX_RETRIES = parseInt(process.env.EMAIL_MAX_RETRIES) || 3;
 const EMAIL_RETRY_DELAY = parseInt(process.env.EMAIL_RETRY_DELAY) || 2000;
-
-// Configure HTTP agents for better connection management in Azure
-const httpAgent = new http.Agent({
-  keepAlive: true,
-  keepAliveMsecs: 30000,
-  maxSockets: 5,
-  maxFreeSockets: 2,
-  timeout: EMAIL_CONNECTION_TIMEOUT
-});
-
-const httpsAgent = new https.Agent({
-  keepAlive: true,
-  keepAliveMsecs: 30000,
-  maxSockets: 5,
-  maxFreeSockets: 2,
-  timeout: EMAIL_CONNECTION_TIMEOUT
-});
-
-// SOAP client options optimized for Azure
-const SOAP_OPTIONS = {
-  timeout: EMAIL_TIMEOUT,
-  connection_timeout: EMAIL_CONNECTION_TIMEOUT,
-  httpClient: {
-    httpAgent: httpAgent,
-    httpsAgent: httpsAgent,
-    timeout: EMAIL_TIMEOUT
-  },
-  request: {
-    timeout: EMAIL_TIMEOUT,
-    headers: {
-      'User-Agent': 'AzureAppService-EmailClient/1.0',
-      'Connection': 'keep-alive',
-      'Keep-Alive': 'timeout=60'
-    }
-  },
-  // Add retry mechanism
-  maxRetries: EMAIL_MAX_RETRIES,
-  retryDelay: EMAIL_RETRY_DELAY
-};
 
 /**
  * Log to Application Insights if available
@@ -61,14 +25,14 @@ const logToApplicationInsights = (error, context) => {
   if (process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
     try {
       console.log('📊 Logging to Application Insights:', {
-        error: error.message,
+        error: error?.message,
         context: context,
         timestamp: new Date().toISOString()
       });
       
       // Basic logging - you can enhance this with the full Application Insights SDK
       console.error('APP_INSIGHTS_ERROR:', JSON.stringify({
-        exception: error.message,
+        exception: error?.message,
         properties: {
           service: 'email',
           environment: process.env.NODE_ENV,
@@ -85,16 +49,37 @@ const logToApplicationInsights = (error, context) => {
 };
 
 /**
- * Create SOAP client with retry mechanism for Azure
+ * Create SOAP client with Azure-compatible configuration
  */
-const createSoapClientWithRetry = async (url, options, retries = EMAIL_MAX_RETRIES) => {
+const createSoapClientWithRetry = async (url, retries = EMAIL_MAX_RETRIES) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(`🔄 SOAP client creation attempt ${attempt}/${retries}`);
       console.log(`🔗 Connecting to: ${url}`);
       
-      const client = await soap.createClientAsync(url, options);
+      // Azure-compatible SOAP options - simplified for better compatibility
+      const soapOptions = {
+        timeout: EMAIL_TIMEOUT,
+        connection_timeout: EMAIL_CONNECTION_TIMEOUT,
+        // Remove custom HTTP agents that cause issues in Azure
+        // The soap library will use default HTTP handling
+        wsdl_headers: {
+          'User-Agent': 'NodeJS-SOAP-Client',
+          'Connection': 'close' // Use close instead of keep-alive to avoid connection issues
+        },
+        // Force HTTPS for Azure
+        forceSoap12: false,
+        useEmptyTag: true
+      };
+
+      const client = await soap.createClientAsync(url, soapOptions);
       console.log('✅ SOAP client created successfully');
+      
+      // Verify the client has the expected methods
+      if (!client.SendMailHTMLAsync) {
+        console.log('📋 Available methods:', Object.keys(client));
+        throw new Error('SendMailHTMLAsync method not found on SOAP client');
+      }
       
       // Log successful connection
       logToApplicationInsights(null, {
@@ -125,7 +110,7 @@ const createSoapClientWithRetry = async (url, options, retries = EMAIL_MAX_RETRI
       }
       
       // Wait before retry with exponential backoff
-      const delay = options.retryDelay * Math.pow(2, attempt - 1);
+      const delay = EMAIL_RETRY_DELAY * Math.pow(2, attempt - 1);
       console.log(`⏱️ Waiting ${delay}ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -145,6 +130,7 @@ const sendEmailWithRetry = async (client, emailData, retries = 2) => {
         bodyLength: emailData.body?.length 
       });
       
+      // Call the SOAP method
       const result = await client.SendMailHTMLAsync(emailData);
       console.log('✅ Email sent successfully:', result);
       
@@ -189,7 +175,7 @@ const sendEmailWithRetry = async (client, emailData, retries = 2) => {
 /**
  * Enhanced send email function for Azure environment
  */
-const sendEmail = async (to, subject, body) => {
+const sendEmail = async (to, subject, body, isCopy = false) => {
   let client;
   const startTime = Date.now();
   
@@ -198,13 +184,14 @@ const sendEmail = async (to, subject, body) => {
     console.log('📧 Email details:', { 
       to, 
       subject: subject.substring(0, 50) + '...',
+      isCopy,
       serviceUrl: EMAIL_SERVICE_URL,
       environment: process.env.NODE_ENV,
       appService: process.env.WEBSITE_SITE_NAME
     });
     
     // Create SOAP client with retry
-    client = await createSoapClientWithRetry(EMAIL_SERVICE_URL, SOAP_OPTIONS);
+    client = await createSoapClientWithRetry(EMAIL_SERVICE_URL);
     
     const emailData = {
       to: to,
@@ -254,18 +241,107 @@ const sendEmail = async (to, subject, body) => {
       errorMessage = 'Connection reset by email service - this may be due to Azure SNAT port limitations.';
     } else if (error.message.includes('getaddrinfo')) {
       errorMessage = 'DNS resolution failed - unable to resolve email service hostname.';
+    } else if (error.message.includes('httpClient.request is not a function')) {
+      errorMessage = 'SOAP client configuration error - HTTP client incompatibility in Azure environment.';
     }
     
     throw new Error(errorMessage);
   } finally {
     // Clean up client resources if needed
-    if (client && client.httpClient) {
+    if (client && typeof client.destroy === 'function') {
       try {
-        client.httpClient.destroy?.();
+        client.destroy();
       } catch (cleanupError) {
         console.warn('⚠️ Error during client cleanup:', cleanupError.message);
       }
     }
+  }
+};
+
+/**
+ * Send email with CC functionality using multiple individual emails
+ */
+const sendEmailWithCC = async (to, ccList, subject, body) => {
+  const results = [];
+  
+  try {
+    console.log('📧 Starting CC email sending process...');
+    console.log('📬 Recipients:', { to, ccList, subject: subject.substring(0, 50) + '...' });
+    
+    // Send primary email to main recipient
+    console.log('📤 Sending primary email to:', to);
+    const primaryResult = await safeEmailSend(sendEmail, to, subject, body, false);
+    results.push({ 
+      recipient: to, 
+      type: 'primary', 
+      success: primaryResult.success, 
+      error: primaryResult.error 
+    });
+    
+    // Send copy emails to CC recipients
+    if (ccList && ccList.length > 0) {
+      for (const ccRecipient of ccList) {
+        // Skip if CC recipient is the same as primary recipient
+        if (ccRecipient === to) {
+          console.log(`⏭️ Skipping CC for ${ccRecipient} (same as primary recipient)`);
+          continue;
+        }
+        
+        console.log('📋 Sending copy email to:', ccRecipient);
+        const ccSubject = `[COPY] ${subject}`;
+        
+        // Add CC indicator to the email body
+        const ccBody = `
+          <div style="background-color: #e3f2fd; padding: 15px; margin-bottom: 20px; border-left: 4px solid #2196f3; border-radius: 4px;">
+            <p style="margin: 0; font-weight: bold; color: #1976d2;">📋 This is a copy of the email sent to: ${to}</p>
+          </div>
+          ${body}
+        `;
+        
+        const ccResult = await safeEmailSend(sendEmail, ccRecipient, ccSubject, ccBody, true);
+        results.push({ 
+          recipient: ccRecipient, 
+          type: 'cc', 
+          success: ccResult.success, 
+          error: ccResult.error 
+        });
+        
+        // Small delay between CC emails to avoid overwhelming the email service
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // Determine overall success
+    const successCount = results.filter(r => r.success).length;
+    const totalCount = results.length;
+    const overallSuccess = successCount > 0; // Consider success if at least one email sent
+    
+    console.log(`📊 Email sending summary: ${successCount}/${totalCount} emails sent successfully`);
+    
+    return {
+      success: overallSuccess,
+      results: results,
+      summary: {
+        total: totalCount,
+        successful: successCount,
+        failed: totalCount - successCount
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ CC email sending failed:', error);
+    
+    logToApplicationInsights(error, {
+      operation: 'sendEmailWithCC',
+      success: false,
+      recipients: { to, ccList }
+    });
+    
+    return {
+      success: false,
+      error: error.message,
+      results: results
+    };
   }
 };
 
@@ -304,7 +380,8 @@ export const notifyTicketCreated = async (ticketData, userData) => {
   });
   console.log('👤 User data:', { 
     name: userData.name, 
-    email: userData.email 
+    email: userData.email,
+    role: userData.role
   });
   
   const subject = `New Support Ticket Created - ${ticketData.ticket_number}`;
@@ -328,6 +405,7 @@ export const notifyTicketCreated = async (ticketData, userData) => {
         <h3 style="color: #495057; margin-top: 0;">Submitted By</h3>
         <p><strong>Name:</strong> ${userData.name}</p>
         <p><strong>Email:</strong> ${userData.email}</p>
+        <p><strong>Role:</strong> ${userData.role || 'User'}</p>
       </div>
       
       <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -349,12 +427,23 @@ export const notifyTicketCreated = async (ticketData, userData) => {
     </div>
   `;
 
-  console.log('📧 Sending to digital team email:', DIGITAL_TEAM_EMAIL);
+  // Determine CC recipients based on user role
+  let ccList = [];
   
-  const result = await safeEmailSend(sendEmail, DIGITAL_TEAM_EMAIL, subject, body);
+  // For regular users: CC the ticket creator so they get a copy
+  if (userData.role !== 'digital_team' && userData.role !== 'manager') {
+    ccList.push(userData.email);
+    console.log('📋 Adding ticket creator to CC:', userData.email);
+  }
+  
+  console.log('📧 Sending to digital team email:', DIGITAL_TEAM_EMAIL);
+  console.log('📋 CC recipients:', ccList);
+  
+  const result = await sendEmailWithCC(DIGITAL_TEAM_EMAIL, ccList, subject, body);
   
   if (result.success) {
     console.log('✅ Ticket creation notification sent successfully');
+    console.log('📊 Email summary:', result.summary);
   } else {
     console.error('❌ Ticket creation notification failed:', result.error);
   }
@@ -372,6 +461,10 @@ export const notifyTicketUpdated = async (ticketData, remark, newStatus, updated
     ticket_number: ticketData.ticket_number,
     title: ticketData.title,
     created_by_email: ticketData.created_by_email
+  });
+  console.log('👤 Updated by:', { 
+    name: updatedByUser.name, 
+    email: updatedByUser.email 
   });
   
   const subject = `Ticket Update - ${ticketData.ticket_number}`;
@@ -412,12 +505,21 @@ export const notifyTicketUpdated = async (ticketData, remark, newStatus, updated
     </div>
   `;
 
+  // CC the person who made the update (so they get a copy of what was sent)
+  let ccList = [];
+  if (updatedByUser.email && updatedByUser.email !== ticketData.created_by_email) {
+    ccList.push(updatedByUser.email);
+    console.log('📋 Adding updater to CC:', updatedByUser.email);
+  }
+
   console.log('📧 Sending to ticket creator:', ticketData.created_by_email);
+  console.log('📋 CC recipients:', ccList);
   
-  const result = await safeEmailSend(sendEmail, ticketData.created_by_email, subject, body);
+  const result = await sendEmailWithCC(ticketData.created_by_email, ccList, subject, body);
   
   if (result.success) {
     console.log('✅ Ticket update notification sent successfully');
+    console.log('📊 Email summary:', result.summary);
   } else {
     console.error('❌ Ticket update notification failed:', result.error);
   }
@@ -434,6 +536,10 @@ export const notifyManagerApproval = async (ticketData, createdByUser) => {
     id: ticketData.id, 
     ticket_number: ticketData.ticket_number,
     title: ticketData.title 
+  });
+  console.log('👤 Created by:', { 
+    name: createdByUser.name, 
+    email: createdByUser.email 
   });
   
   const subject = `Manager Approval Required - ${ticketData.ticket_number}`;
@@ -484,12 +590,22 @@ export const notifyManagerApproval = async (ticketData, createdByUser) => {
     </div>
   `;
 
-  console.log('📧 Sending to digital team email (manager approval):', DIGITAL_TEAM_EMAIL);
+  // CC the digital team member who created the ticket (so they get a copy)
+  let ccList = [];
+  if (createdByUser.email) {
+    ccList.push(createdByUser.email);
+    console.log('📋 Adding ticket creator to CC:', createdByUser.email);
+  }
+
+  // Send to manager for approval
+  console.log('📧 Sending to manager email:', MANAGER_EMAIL);
+  console.log('📋 CC recipients:', ccList);
   
-  const result = await safeEmailSend(sendEmail, DIGITAL_TEAM_EMAIL, subject, body);
+  const result = await sendEmailWithCC(MANAGER_EMAIL, ccList, subject, body);
   
   if (result.success) {
     console.log('✅ Manager approval notification sent successfully');
+    console.log('📊 Email summary:', result.summary);
   } else {
     console.error('❌ Manager approval notification failed:', result.error);
   }
@@ -514,6 +630,7 @@ export const testEmail = async (req, res) => {
       subscriptionId: process.env.WEBSITE_OWNER_NAME,
       emailServiceUrl: EMAIL_SERVICE_URL,
       digitalTeamEmail: DIGITAL_TEAM_EMAIL,
+      managerEmail: MANAGER_EMAIL,
       emailTimeout: EMAIL_TIMEOUT,
       maxRetries: EMAIL_MAX_RETRIES
     });
@@ -568,6 +685,7 @@ export const testAzureEmail = async (req, res) => {
       region: process.env.WEBSITE_RESOURCE_GROUP?.includes('eastasia') ? 'Southeast Asia' : 'Unknown',
       emailServiceUrl: EMAIL_SERVICE_URL,
       digitalTeamEmail: DIGITAL_TEAM_EMAIL,
+      managerEmail: MANAGER_EMAIL,
       timeout: EMAIL_TIMEOUT,
       connectionTimeout: EMAIL_CONNECTION_TIMEOUT,
       maxRetries: EMAIL_MAX_RETRIES,
@@ -595,7 +713,18 @@ export const testAzureEmail = async (req, res) => {
       `
     };
     
-    const result = await safeEmailSend(sendEmail, testData.to, testData.subject, testData.message);
+    // Test CC functionality if requested
+    const testCC = req.body.testCC === true;
+    const ccRecipients = req.body.ccList || [];
+    
+    let result;
+    
+    if (testCC && ccRecipients.length > 0) {
+      console.log('🧪 Testing CC functionality with recipients:', ccRecipients);
+      result = await sendEmailWithCC(testData.to, ccRecipients, testData.subject, testData.message);
+    } else {
+      result = await safeEmailSend(sendEmail, testData.to, testData.subject, testData.message);
+    }
     
     const response = {
       success: result.success,
@@ -606,6 +735,7 @@ export const testAzureEmail = async (req, res) => {
       configuration: {
         emailServiceUrl: EMAIL_SERVICE_URL,
         digitalTeamEmail: DIGITAL_TEAM_EMAIL,
+        managerEmail: MANAGER_EMAIL,
         timeout: EMAIL_TIMEOUT,
         connectionTimeout: EMAIL_CONNECTION_TIMEOUT,
         maxRetries: EMAIL_MAX_RETRIES,
@@ -616,7 +746,13 @@ export const testAzureEmail = async (req, res) => {
         resourceGroup: process.env.WEBSITE_RESOURCE_GROUP,
         nodeVersion: process.version,
         platform: process.platform
-      }
+      },
+      ccTest: testCC ? {
+        enabled: true,
+        recipients: ccRecipients,
+        results: result.results || null,
+        summary: result.summary || null
+      } : { enabled: false }
     };
     
     if (result.success) {
