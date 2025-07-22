@@ -1,7 +1,7 @@
 // ticketController.js - Updated with email notifications
 import { getDB, sql } from '../config/database.js';
 import { sendResponse, sendError, generateTicketNumber } from '../utils/helpers.js';
-import { notifyTicketCreated, notifyTicketUpdated, notifyManagerApproval } from '..controllers/emailController.js';
+import { notifyTicketCreated, notifyTicketUpdated, notifyManagerApproval } from '../controllers/emailController.js';
 
 /**
  * Create a new ticket
