@@ -1,3 +1,4 @@
+//src/routes/categories.js
 import express from 'express';
 import { 
   getCategories, 
@@ -25,9 +26,9 @@ router.get('/:categoryId/support-persons', validateCategoryId, getSupportPersons
 
 /**
  * @route   GET /api/categories/support-persons/all
- * @desc    Get all support persons (admin only)
- * @access  Private (Manager only)
+ * @desc    Get all support persons (for filtering)
+ * @access  Private (Manager, Digital Team, Admin)
  */
-router.get('/support-persons/all', authenticateToken, authorizeRoles('manager'), getAllSupportPersons);
+router.get('/support-persons/all', authenticateToken, authorizeRoles('manager', 'digital_team', 'admin'), getAllSupportPersons);
 
 export default router;
