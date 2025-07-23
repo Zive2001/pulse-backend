@@ -5,8 +5,9 @@ import {
   getAllTickets, 
   getTicketById,
   updateTicketStatus, 
-  addTicketRemark,  // Add this import
+  addTicketRemark,
   approveTicket,
+  rejectTicket,
   getTicketHistory 
 } from '../controllers/ticketController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
@@ -35,10 +36,10 @@ router.get('/', authenticateToken, getUserTickets);
 
 /**
  * @route   GET /api/tickets/all
- * @desc    Get all tickets (for managers and digital team)
- * @access  Private (Manager, Digital Team)
+ * @desc    Get all tickets (for managers, digital team, and admin)
+ * @access  Private (Manager, Digital Team, Admin)
  */
-router.get('/all', authenticateToken, authorizeRoles('manager', 'digital_team'), getAllTickets);
+router.get('/all', authenticateToken, authorizeRoles('manager', 'digital_team', 'admin'), getAllTickets);
 
 /**
  * @route   GET /api/tickets/:id
@@ -50,11 +51,11 @@ router.get('/:id', authenticateToken, validateTicketId, getTicketById);
 /**
  * @route   PUT /api/tickets/:id/status
  * @desc    Update ticket status
- * @access  Private (Manager, Digital Team)
+ * @access  Private (Manager, Digital Team, Admin)
  */
 router.put('/:id/status', 
   authenticateToken, 
-  authorizeRoles('manager', 'digital_team'), 
+  authorizeRoles('manager', 'digital_team', 'admin'), 
   validateUpdateTicketStatus, 
   updateTicketStatus
 );
@@ -62,19 +63,19 @@ router.put('/:id/status',
 /**
  * @route   PUT /api/tickets/:id/remark
  * @desc    Add remark to ticket
- * @access  Private (Manager, Digital Team)
+ * @access  Private (Manager, Digital Team, Admin)
  */
 router.put('/:id/remark', 
   authenticateToken, 
-  authorizeRoles('manager', 'digital_team'), 
+  authorizeRoles('manager', 'digital_team', 'admin'), 
   validateTicketId,
-  validateTicketRemark,  // Add this
+  validateTicketRemark,
   addTicketRemark
 );
 
 /**
  * @route   PUT /api/tickets/:id/approve
- * @desc    Approve ticket (for managers)
+ * @desc    Approve ticket (for managers only)
  * @access  Private (Manager only)
  */
 router.put('/:id/approve', 
@@ -87,7 +88,7 @@ router.put('/:id/approve',
 /**
  * @route   GET /api/tickets/:id/history
  * @desc    Get ticket history
- * @access  Private (Manager, Digital Team, Ticket Creator)
+ * @access  Private (Manager, Digital Team, Admin, Ticket Creator)
  */
 router.get('/:id/history', 
   authenticateToken, 
