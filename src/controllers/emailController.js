@@ -19,6 +19,270 @@ const EMAIL_MAX_RETRIES = parseInt(process.env.EMAIL_MAX_RETRIES) || 3;
 const EMAIL_RETRY_DELAY = parseInt(process.env.EMAIL_RETRY_DELAY) || 2000;
 
 /**
+ * Professional email template wrapper - Modern minimalistic design inspired by RIOT Games
+ */
+const createEmailTemplate = (title, content, primaryColor = '#023047') => {
+  return `
+    <!DOCTYPE html>
+    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title>${title}</title>
+        <!--[if gte mso 9]>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:AllowPNG/>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+        <![endif]-->
+        <style>
+            /* Reset and Outlook compatibility */
+            table {
+                border-collapse: collapse;
+                mso-table-lspace: 0pt;
+                mso-table-rspace: 0pt;
+            }
+            
+            .ReadMsgBody { width: 100%; }
+            .ExternalClass { width: 100%; }
+            .ExternalClass * { line-height: 100%; }
+            
+            body {
+                margin: 0 !important;
+                padding: 0 !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.5;
+                color: #1a1a1a;
+                background-color: #ffffff;
+                -webkit-text-size-adjust: 100%;
+                -ms-text-size-adjust: 100%;
+            }
+            
+            .email-container {
+                max-width: 580px;
+                margin: 0 auto;
+                background-color: #ffffff;
+            }
+            
+            /* Modern header styling */
+            .email-header {
+                background-color: #ffffff;
+                padding: 48px 40px 32px;
+                text-align: left;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            
+            .email-header h1 {
+                color: #023047;
+                font-size: 32px;
+                font-weight: 600;
+                margin: 0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.2;
+                letter-spacing: -0.02em;
+            }
+            
+            .email-body {
+                padding: 40px;
+                background-color: #ffffff;
+            }
+            
+            /* Clean section styling */
+            .section {
+                margin: 32px 0;
+                padding: 0;
+            }
+            
+            .section:first-child {
+                margin-top: 0;
+            }
+            
+            .section-title {
+                color: #023047;
+                font-size: 16px;
+                font-weight: 600;
+                margin: 0 0 16px 0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                letter-spacing: -0.01em;
+            }
+            
+            .section-content {
+                background-color: #fafafa;
+                border: 1px solid #f0f0f0;
+                border-radius: 8px;
+                padding: 24px;
+            }
+            
+            .section-content p {
+                margin: 8px 0;
+                color: #4a4a4a;
+                font-size: 14px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.5;
+            }
+            
+            .section-content strong {
+                color: #1a1a1a;
+                font-weight: 600;
+            }
+            
+            /* Status badges */
+            .status-badge {
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 16px;
+                font-size: 12px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            }
+            
+            .status-pending {
+                background-color: #fff3cd;
+                color: #856404;
+            }
+            
+            .status-approved {
+                background-color: #d4edda;
+                color: #155724;
+            }
+            
+            .status-updated {
+                background-color: #cce5ff;
+                color: #004085;
+            }
+            
+            /* Description styling */
+            .description-box {
+                background-color: #ffffff;
+                border: 1px solid #e8e8e8;
+                border-radius: 6px;
+                padding: 20px;
+                margin: 12px 0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                color: #4a4a4a;
+                line-height: 1.6;
+                font-size: 14px;
+            }
+            
+            /* Copy indicator - subtle text only */
+            .copy-indicator {
+                color: #2a9d8f;
+                font-size: 13px;
+                font-weight: 500;
+                margin: 0 0 24px 0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                padding: 0;
+                background: none;
+            }
+            
+            /* Modern button styling */
+            .action-container {
+                text-align: center;
+                padding: 40px 0 20px;
+                margin-top: 40px;
+            }
+            
+            .btn {
+                display: inline-block;
+                background-color: #023047;
+                color: #ffffff;
+                padding: 16px 32px;
+                text-decoration: none;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 14px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                letter-spacing: 0.01em;
+                transition: background-color 0.2s ease;
+            }
+            
+            .btn:hover {
+                background-color: #034663;
+            }
+            
+            .btn-success {
+                background-color: #2a9d8f;
+            }
+            
+            .btn-success:hover {
+                background-color: #238a7a;
+            }
+            
+            .btn-warning {
+                background-color: #f59e0b;
+            }
+            
+            .btn-warning:hover {
+                background-color: #d97706;
+            }
+            
+            /* Modern footer */
+            .footer {
+                background-color: #fafafa;
+                padding: 32px 40px;
+                text-align: center;
+                border-top: 1px solid #f0f0f0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            }
+            
+            .footer p {
+                color: #8a8a8a;
+                font-size: 13px;
+                margin: 4px 0;
+                line-height: 1.4;
+            }
+            
+            /* Responsive design */
+            @media only screen and (max-width: 600px) {
+                .email-header,
+                .email-body,
+                .footer {
+                    padding-left: 24px !important;
+                    padding-right: 24px !important;
+                }
+                
+                .email-header h1 {
+                    font-size: 24px !important;
+                }
+                
+                .section-content {
+                    padding: 20px !important;
+                }
+                
+                .btn {
+                    padding: 14px 28px !important;
+                    font-size: 13px !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #ffffff;">
+            <tr>
+                <td align="center" valign="top">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="580" class="email-container" style="background-color: #ffffff;">
+                        ${content}
+                        <tr>
+                            <td class="footer">
+                                <p>This is an automated notification from Bodyline Pulse Support System</p>
+                                <p>© ${new Date().getFullYear()} Bodyline Digital Excellence. All rights reserved.</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+  `;
+};
+
+/**
  * Log to Application Insights if available
  */
 const logToApplicationInsights = (error, context) => {
@@ -291,12 +555,19 @@ const sendEmailWithCC = async (to, ccList, subject, body) => {
         const ccSubject = `[COPY] ${subject}`;
         
         // Add CC indicator to the email body
-        const ccBody = `
-          <div style="background-color: #e3f2fd; padding: 15px; margin-bottom: 20px; border-left: 4px solid #2196f3; border-radius: 4px;">
-            <p style="margin: 0; font-weight: bold; color: #1976d2;">📋 This is a copy of the email sent to: ${to}</p>
-          </div>
-          ${body}
-        `;
+        const ccBody = createEmailTemplate(ccSubject, `
+          <tr>
+              <td class="email-header">
+                  <h1>Email Copy</h1>
+              </td>
+          </tr>
+          <tr>
+              <td class="email-body">
+                  <p class="copy-indicator">📋 This is a copy of the email sent to: ${to}</p>
+                  ${body.replace(/<tr>\s*<td class="email-header">[\s\S]*?<\/td>\s*<\/tr>\s*<tr>\s*<td class="email-body">/, '').replace(/<\/td>\s*<\/tr>\s*<\/table>\s*<\/td>\s*<\/tr>\s*<\/table>\s*<\/body>\s*<\/html>$/, '')}
+              </td>
+          </tr>
+        `);
         
         const ccResult = await safeEmailSend(sendEmail, ccRecipient, ccSubject, ccBody, true);
         results.push({ 
@@ -386,46 +657,55 @@ export const notifyTicketCreated = async (ticketData, userData) => {
   
   const subject = `New Support Ticket Created - ${ticketData.ticket_number}`;
   
-  const body = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
-        🎫 New Support Ticket Created
-      </h2>
-      
-      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Ticket Details</h3>
-        <p><strong>Ticket Number:</strong> ${ticketData.ticket_number}</p>
-        <p><strong>Title:</strong> ${ticketData.title}</p>
-        <p><strong>Type:</strong> ${ticketData.type}</p>
-        <p><strong>Urgency:</strong> ${ticketData.urgency}</p>
-        <p><strong>Status:</strong> ${ticketData.status}</p>
-      </div>
-      
-      <div style="background-color: #e9f7ef; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Submitted By</h3>
-        <p><strong>Name:</strong> ${userData.name}</p>
-        <p><strong>Email:</strong> ${userData.email}</p>
-        <p><strong>Role:</strong> ${userData.role || 'User'}</p>
-      </div>
-      
-      <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Description</h3>
-        <p style="white-space: pre-wrap;">${ticketData.description}</p>
-      </div>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${SYSTEM_URL}" 
-           style="background-color: #007bff; color: white; padding: 12px 30px; 
-                  text-decoration: none; border-radius: 5px; display: inline-block;">
-          🔗 Access Support System
-        </a>
-      </div>
-      
-      <p style="color: #6c757d; font-size: 14px; text-align: center; margin-top: 40px;">
-        This is an automated notification from the Support Ticket System
-      </p>
-    </div>
+  const content = `
+    <tr>
+        <td class="email-header">
+            <h1>New Support Ticket Created</h1>
+        </td>
+    </tr>
+    <tr>
+        <td class="email-body">
+            <div class="section">
+                <h3 class="section-title">Ticket Information</h3>
+                <div class="section-content">
+                    <p><strong>Ticket Number:</strong> ${ticketData.ticket_number}</p>
+                    <p><strong>Title:</strong> ${ticketData.title}</p>
+                    <p><strong>Type:</strong> ${ticketData.type}</p>
+                    <p><strong>Urgency:</strong> <span class="status-badge status-pending">${ticketData.urgency}</span></p>
+                    <p><strong>Status:</strong> <span class="status-badge status-updated">${ticketData.status}</span></p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Submitted By</h3>
+                <div class="section-content">
+                    <p><strong>Name:</strong> ${userData.name}</p>
+                    <p><strong>Email:</strong> ${userData.email}</p>
+                    <p><strong>Role:</strong> ${userData.role || 'User'}</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Description</h3>
+                <div class="description-box">${ticketData.description}</div>
+            </div>
+            
+            <div class="action-container">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                    <tr>
+                        <td>
+                            <a href="${SYSTEM_URL}" class="btn" style="background-color: #023047; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+                                Access Bodyline Pulse
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </td>
+    </tr>
   `;
+
+  const body = createEmailTemplate(subject, content);
 
   // Determine CC recipients based on user role
   let ccList = [];
@@ -469,41 +749,48 @@ export const notifyTicketUpdated = async (ticketData, remark, newStatus, updated
   
   const subject = `Ticket Update - ${ticketData.ticket_number}`;
   
-  const body = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333; border-bottom: 2px solid #28a745; padding-bottom: 10px;">
-        📝 Ticket Status Updated
-      </h2>
-      
-      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Ticket Information</h3>
-        <p><strong>Ticket Number:</strong> ${ticketData.ticket_number}</p>
-        <p><strong>Title:</strong> ${ticketData.title}</p>
-        <p><strong>New Status:</strong> <span style="color: #28a745; font-weight: bold;">${newStatus}</span></p>
-      </div>
-      
-      <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Update Details</h3>
-        <p><strong>Updated by:</strong> ${updatedByUser.name}</p>
-        <p><strong>Remarks:</strong></p>
-        <div style="background-color: white; padding: 15px; border-left: 4px solid #007bff; margin-top: 10px;">
-          <p style="white-space: pre-wrap; margin: 0;">${remark}</p>
-        </div>
-      </div>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${SYSTEM_URL}/tickets/${ticketData.id}" 
-           style="background-color: #28a745; color: white; padding: 12px 30px; 
-                  text-decoration: none; border-radius: 5px; display: inline-block;">
-          🔗 View Ticket Details
-        </a>
-      </div>
-      
-      <p style="color: #6c757d; font-size: 14px; text-align: center; margin-top: 40px;">
-        This is an automated notification from the Support Ticket System
-      </p>
-    </div>
+  const content = `
+    <tr>
+        <td class="email-header">
+            <h1>Ticket Status Updated</h1>
+        </td>
+    </tr>
+    <tr>
+        <td class="email-body">
+            <div class="section">
+                <h3 class="section-title">Ticket Information</h3>
+                <div class="section-content">
+                    <p><strong>Ticket Number:</strong> ${ticketData.ticket_number}</p>
+                    <p><strong>Title:</strong> ${ticketData.title}</p>
+                    <p><strong>New Status:</strong> <span class="status-badge status-approved">${newStatus}</span></p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Update Details</h3>
+                <div class="section-content">
+                    <p><strong>Updated by:</strong> ${updatedByUser.name}</p>
+                    <p><strong>Remarks:</strong></p>
+                    <div class="description-box">${remark}</div>
+                </div>
+            </div>
+            
+            <div class="action-container">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                    <tr>
+                        <td>
+                            <a href="${SYSTEM_URL}/tickets/${ticketData.id}" class="btn btn-success" style="background-color: #2a9d8f; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+                                View Ticket Details
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </td>
+    </tr>
   `;
+
+  const body = createEmailTemplate(subject, content, '#2a9d8f');
 
   // CC the person who made the update (so they get a copy of what was sent)
   let ccList = [];
@@ -544,51 +831,62 @@ export const notifyManagerApproval = async (ticketData, createdByUser) => {
   
   const subject = `Manager Approval Required - ${ticketData.ticket_number}`;
   
-  const body = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333; border-bottom: 2px solid #ffc107; padding-bottom: 10px;">
-        ⚠️ Manager Approval Required
-      </h2>
-      
-      <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #856404; margin-top: 0;">🔍 Action Required</h3>
-        <p>A digital team member has created a support ticket that requires your approval before it can be processed.</p>
-      </div>
-      
-      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Ticket Details</h3>
-        <p><strong>Ticket Number:</strong> ${ticketData.ticket_number}</p>
-        <p><strong>Title:</strong> ${ticketData.title}</p>
-        <p><strong>Type:</strong> ${ticketData.type}</p>
-        <p><strong>Urgency:</strong> ${ticketData.urgency}</p>
-        <p><strong>Status:</strong> <span style="color: #ffc107; font-weight: bold;">Pending Approval</span></p>
-      </div>
-      
-      <div style="background-color: #e9f7ef; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Created By</h3>
-        <p><strong>Name:</strong> ${createdByUser.name}</p>
-        <p><strong>Email:</strong> ${createdByUser.email}</p>
-        <p><strong>Role:</strong> Digital Team Member</p>
-      </div>
-      
-      <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #495057; margin-top: 0;">Description</h3>
-        <p style="white-space: pre-wrap;">${ticketData.description}</p>
-      </div>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${SYSTEM_URL}/tickets/${ticketData.id}" 
-           style="background-color: #ffc107; color: #212529; padding: 12px 30px; 
-                  text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
-          🔗 Review & Approve Ticket
-        </a>
-      </div>
-      
-      <p style="color: #6c757d; font-size: 14px; text-align: center; margin-top: 40px;">
-        Please review and approve this ticket to allow the digital team to proceed with the request.
-      </p>
-    </div>
+  const content = `
+    <tr>
+        <td class="email-header">
+            <h1>Manager Approval Required</h1>
+        </td>
+    </tr>
+    <tr>
+        <td class="email-body">
+            <div class="section">
+                <h3 class="section-title">Action Required</h3>
+                <div class="section-content">
+                    <p>A digital team member has created a support ticket that requires your approval before it can be processed.</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Ticket Details</h3>
+                <div class="section-content">
+                    <p><strong>Ticket Number:</strong> ${ticketData.ticket_number}</p>
+                    <p><strong>Title:</strong> ${ticketData.title}</p>
+                    <p><strong>Type:</strong> ${ticketData.type}</p>
+                    <p><strong>Urgency:</strong> <span class="status-badge status-pending">${ticketData.urgency}</span></p>
+                    <p><strong>Status:</strong> <span class="status-badge status-pending">Pending Approval</span></p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Created By</h3>
+                <div class="section-content">
+                    <p><strong>Name:</strong> ${createdByUser.name}</p>
+                    <p><strong>Email:</strong> ${createdByUser.email}</p>
+                    <p><strong>Role:</strong> Digital Team Member</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Description</h3>
+                <div class="description-box">${ticketData.description}</div>
+            </div>
+            
+            <div class="action-container">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                    <tr>
+                        <td>
+                            <a href="${SYSTEM_URL}/tickets/${ticketData.id}" class="btn btn-warning" style="background-color: #f59e0b; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+                                Review & Approve Ticket
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </td>
+    </tr>
   `;
+
+  const body = createEmailTemplate(subject, content, '#f59e0b');
 
   // CC the digital team member who created the ticket (so they get a copy)
   let ccList = [];
@@ -640,7 +938,47 @@ export const testEmail = async (req, res) => {
       return sendError(res, 400, 'Missing required fields: to, subject, message');
     }
 
-    const result = await safeEmailSend(sendEmail, to, subject, message);
+    // Create professional test email template
+    const testContent = `
+      <tr>
+          <td class="email-header">
+              <h1>Test Email</h1>
+          </td>
+      </tr>
+      <tr>
+          <td class="email-body">
+              <div class="section">
+                  <h3 class="section-title">Test Message</h3>
+                  <div class="description-box">${message}</div>
+              </div>
+              
+              <div class="section">
+                  <h3 class="section-title">System Information</h3>
+                  <div class="section-content">
+                      <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'Development'}</p>
+                      <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+                      <p><strong>App Service:</strong> ${process.env.WEBSITE_SITE_NAME || 'Local'}</p>
+                      <p><strong>Node Version:</strong> ${process.version}</p>
+                  </div>
+              </div>
+              
+              <div class="action-container">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                      <tr>
+                          <td>
+                              <a href="${SYSTEM_URL}" class="btn" style="background-color: #023047; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+                                  Access Bodyline Pulse
+                              </a>
+                          </td>
+                      </tr>
+                  </table>
+              </div>
+          </td>
+      </tr>
+    `;
+
+    const testBody = createEmailTemplate(subject, testContent);
+    const result = await safeEmailSend(sendEmail, to, subject, testBody);
     
     if (result.success === false) {
       console.log('❌ Test email failed with safe wrapper');
@@ -696,22 +1034,64 @@ export const testAzureEmail = async (req, res) => {
     const testData = {
       to: req.body.to || DIGITAL_TEAM_EMAIL,
       subject: `Azure Email Test - ${new Date().toISOString()}`,
-      message: `
-        <h2>Azure App Service Email Test</h2>
-        <p>This is a test email sent from Azure App Service.</p>
-        <ul>
-          <li><strong>Timestamp:</strong> ${new Date().toISOString()}</li>
-          <li><strong>Environment:</strong> ${process.env.NODE_ENV}</li>
-          <li><strong>App Service:</strong> ${process.env.WEBSITE_SITE_NAME}</li>
-          <li><strong>Resource Group:</strong> ${process.env.WEBSITE_RESOURCE_GROUP}</li>
-          <li><strong>Node Version:</strong> ${process.version}</li>
-          <li><strong>Email Service URL:</strong> ${EMAIL_SERVICE_URL}</li>
-          <li><strong>Timeout Configuration:</strong> ${EMAIL_TIMEOUT}ms</li>
-          <li><strong>Max Retries:</strong> ${EMAIL_MAX_RETRIES}</li>
-        </ul>
-        <p>If you receive this email, the email service is working correctly from Azure App Service.</p>
-      `
+      message: `Azure App Service Email Test - This is a comprehensive test email sent from Azure App Service to verify email functionality.`
     };
+    
+    // Create professional Azure test email template
+    const azureTestContent = `
+      <tr>
+          <td class="email-header">
+              <h1>Azure Email Service Test</h1>
+          </td>
+      </tr>
+      <tr>
+          <td class="email-body">
+              <div class="section">
+                  <h3 class="section-title">Test Status</h3>
+                  <div class="section-content">
+                      <p>This email was successfully sent from Azure App Service, confirming that the email service is operational.</p>
+                  </div>
+              </div>
+              
+              <div class="section">
+                  <h3 class="section-title">Environment Details</h3>
+                  <div class="section-content">
+                      <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+                      <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'Development'}</p>
+                      <p><strong>App Service:</strong> ${process.env.WEBSITE_SITE_NAME || 'Local'}</p>
+                      <p><strong>Resource Group:</strong> ${process.env.WEBSITE_RESOURCE_GROUP || 'Local'}</p>
+                      <p><strong>Node Version:</strong> ${process.version}</p>
+                      <p><strong>Platform:</strong> ${process.platform}</p>
+                  </div>
+              </div>
+              
+              <div class="section">
+                  <h3 class="section-title">Email Configuration</h3>
+                  <div class="section-content">
+                      <p><strong>Service URL:</strong> ${EMAIL_SERVICE_URL}</p>
+                      <p><strong>Timeout:</strong> ${EMAIL_TIMEOUT}ms</p>
+                      <p><strong>Connection Timeout:</strong> ${EMAIL_CONNECTION_TIMEOUT}ms</p>
+                      <p><strong>Max Retries:</strong> ${EMAIL_MAX_RETRIES}</p>
+                      <p><strong>Retry Delay:</strong> ${EMAIL_RETRY_DELAY}ms</p>
+                  </div>
+              </div>
+              
+              <div class="action-container">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                      <tr>
+                          <td>
+                              <a href="${SYSTEM_URL}" class="btn" style="background-color: #023047; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+                                  Access Bodyline Pulse
+                              </a>
+                          </td>
+                      </tr>
+                  </table>
+              </div>
+          </td>
+      </tr>
+    `;
+
+    const azureTestBody = createEmailTemplate(testData.subject, azureTestContent);
     
     // Test CC functionality if requested
     const testCC = req.body.testCC === true;
@@ -721,9 +1101,9 @@ export const testAzureEmail = async (req, res) => {
     
     if (testCC && ccRecipients.length > 0) {
       console.log('🧪 Testing CC functionality with recipients:', ccRecipients);
-      result = await sendEmailWithCC(testData.to, ccRecipients, testData.subject, testData.message);
+      result = await sendEmailWithCC(testData.to, ccRecipients, testData.subject, azureTestBody);
     } else {
-      result = await safeEmailSend(sendEmail, testData.to, testData.subject, testData.message);
+      result = await safeEmailSend(sendEmail, testData.to, testData.subject, azureTestBody);
     }
     
     const response = {
