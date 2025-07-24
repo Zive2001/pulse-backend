@@ -30,10 +30,7 @@ export const validateCreateTicket = [
     .isInt({ min: 1 })
     .withMessage('Valid category ID is required'),
   
-  body('type')
-    .isIn(['BreakFix', 'Application Error', 'Change Request'])
-    .withMessage('Type must be BreakFix, Application Error, or Change Request'),
-  
+
   body('urgency')
     .isIn(['High', 'Medium', 'Low'])
     .withMessage('Urgency must be High, Medium, or Low'),
